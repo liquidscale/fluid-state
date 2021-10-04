@@ -1,0 +1,19 @@
+{
+  "name": "@liquidscale/fluid-state",
+  "version": "1.0.0",
+  "description": "Function State Management Service",
+  "main": "src/main.js",
+  "author": {
+    "email": "joelgrenon@gmail.com",
+    "name": "Joel Grenon",
+    "url": "https://joelgrenon.com"
+  },
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "lerna": "^4.0.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}
