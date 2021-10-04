@@ -1,0 +1,14 @@
+{
+  "name": "@liquidscale/tools",
+  "version": "1.0.0",
+  "main": "src/main.js",
+  "license": "MIT",
+  "bin": {
+    "lqs": "./src/main.js"
+  },
+  "dependencies": {
+    "@liquidscale/dev-cluster": "^1.0.0",
+    "chokidar": "^3.5.2",
+    "socket.io-client": "^4.2.0"
+  }
+}

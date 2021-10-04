@@ -1,0 +1,16 @@
+{
+  "name": "@liquidscale/engine",
+  "version": "1.0.0",
+  "main": "src/main.js",
+  "license": "MIT",
+  "dependencies": {
+    "@babel/core": "^7.15.5",
+    "@babel/preset-env": "^7.15.6",
+    "@liquidscale/memory-store": "^1.0.0",
+    "change-case": "^4.1.2",
+    "filter-objects": "^2.1.1",
+    "json-q": "^0.1.11",
+    "micromongo": "^0.3.1",
+    "mime": "^2.5.2"
+  }
+}

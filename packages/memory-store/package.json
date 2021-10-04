@@ -1,0 +1,10 @@
+{
+  "name": "@liquidscale/memory-store",
+  "version": "1.0.0",
+  "main": "src/main.js",
+  "license": "MIT",
+  "dependencies": {
+    "immer": "^9.0.6",
+    "json-q": "^0.1.11"
+  }
+}

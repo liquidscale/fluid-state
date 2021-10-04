@@ -1,0 +1,26 @@
+module.exports = function (engine) {
+  engine.action("query", function ({ query, scope, $result }) {
+    console.log("executing query", query, scope);
+    async function performQuery($result) {
+      try {
+        const scopeRef = await engine.resolveScope(scope.key);
+        if (scopeRef) {
+          const targetScope = await scopeRef.build({ data: { id: scope.id } });
+          if (targetScope) {
+            const queryResult = targetScope.query(query);
+            $result.next(queryResult);
+            $result.complete();
+          } else {
+            $result.error({ code: 403, message: "invalid scope" });
+          }
+        } else {
+          $result.error({ code: 404, message: "scope not found" });
+        }
+      } catch (err) {
+        console.error("execute query", err);
+        $result.error({ code: 500, message: err.message });
+      }
+    }
+    performQuery($result);
+  });
+};
