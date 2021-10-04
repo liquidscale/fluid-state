@@ -111,7 +111,7 @@ module.exports = function (cluster) {
       );
 
       if (targetFn) {
-        const platform = require("./platform")({ engine: spi });
+        const platform = require("@liquidscale/platform")({ engine: spi });
         return async function () {
           try {
             console.log("executing function", targetFn);
@@ -144,7 +144,7 @@ module.exports = function (cluster) {
         null
       );
       if (targetFn) {
-        const platform = require("./platform")({ engine: spi });
+        const platform = require("@liquidscale/platform")({ engine: spi });
         return async function () {
           try {
             console.log("executing function", targetFn);
