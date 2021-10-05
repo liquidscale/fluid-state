@@ -35,15 +35,15 @@ module.exports = function scopeFactory(impl, engine) {
 
   const id = camelCase(Object.keys(impl).filter(k => k !== "parent")[0]);
 
-  // FIXME: engine must provide a scope registry that is shared between all engine instances in a cluster
-  const activeScopes = {};
+  const scopeRegistry = engine.getRegistry("lqs/scopes");
 
   async function scope(key, spec, context, { store }) {
     console.log("rebuilding scope %s at height %s", key, context.height, spec, context);
 
     // Check if we already have this scope in our active list
-    if (activeScopes[key]) {
-      return activeScopes[key];
+    const activeScope = await scopeRegistry.get(key);
+    if(activeScope) {
+      return activeScope;
     }
 
     const uuid = uniqid("scp-");
@@ -83,7 +83,7 @@ module.exports = function scopeFactory(impl, engine) {
       });
     }
 
-    activeScopes[key] = {
+    const scopeInstance = {
       id: key,
       spi: {},
       selector: context.selector,
@@ -223,7 +223,10 @@ module.exports = function scopeFactory(impl, engine) {
       }
     };
 
-    return activeScopes[key];
+    // Keep track of our active scopes
+    await scopeRegistry.register(key, scopeInstance);
+
+    return scopeInstance;
   }
 
   return {
