@@ -22,7 +22,7 @@
    SOFTWARE.
  */
 const clusterFactory = require("@liquidscale/dev-cluster");
-const fsBundle = require("../lib/fs-bundle");
+const fsBundle = require("../../lib/fs-bundle");
 
 module.exports = function (args) {
   const devRoot = args.root || process.cwd();
@@ -47,13 +47,13 @@ module.exports = function (args) {
       },
       complete() {
         console.log("development bundle was successfully deployed");
-      }
+      },
     });
   });
 
   // subscribe to cluster events and output them to the console
   if (args.debug) {
-    cluster.events.subscribe(event => console.log(event));
+    cluster.events.subscribe((event) => console.log(event));
   }
 
   process.on("beforeExit", async () => {

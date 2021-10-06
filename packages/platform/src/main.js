@@ -44,6 +44,7 @@ module.exports = function ({ version = 1, engine } = {}) {
     ...lodash,
     scopeRef: require("./scope-ref")(spi),
     morph: require("./morph")(spi),
+    mutate: require("./morph")(spi),
     view: require("./view")(spi),
     config: require("./config")(spi)
   };

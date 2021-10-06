@@ -22,7 +22,7 @@
    SOFTWARE.
  */
 const fos = require("filter-objects");
-const { merge, remove } = require("lodash");
+const { merge, remove, matches } = require("lodash");
 
 module.exports = function (engine) {
   return function (target) {
@@ -35,9 +35,9 @@ module.exports = function (engine) {
           target.push(merge(selector, changes.$set || changes));
         }
       },
-      delete(id) {
-        console.log("deleting", id);
-        remove(target, i => i.id === id);
+      delete(selector) {
+        console.log("deleting", selector);
+        remove(target, matches(selector));
       }
     };
   };

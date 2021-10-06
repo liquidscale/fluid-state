@@ -30,7 +30,7 @@ try {
     console.log("LiquidScale.Cloud Tools. Licensed under MIT");
     console.log();
   }
-  require(`./${args._.shift()}`)(args);
+  require(`./commands/${args._.shift()}`)(args);
 } catch (err) {
   console.error("invalid syntax", err);
 }

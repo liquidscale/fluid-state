@@ -27,6 +27,7 @@ const configFactory = require("./config");
 const engineFactory = require("@liquidscale/engine");
 const fos = require("filter-objects");
 const { reduce } = require("lodash");
+const registryFactory = require("./registry");
 
 module.exports = function ({ cwd } = {}) {
   const events = new Subject();
@@ -59,6 +60,9 @@ module.exports = function ({ cwd } = {}) {
     },
     getConfig() {
       return config;
+    },
+    getRegistry(...args) {
+      return registryFactory(...args);
     }
   };
 
@@ -117,6 +121,7 @@ module.exports = function ({ cwd } = {}) {
     try {
       state.availableComponents[event.componentKey] = event.ready;
       console.log("received readiness event", event, state.availableComponents);
+      //FIXME: How can we detect that all our subsystems are ready? Maybe we can find a way to remove this ready gate?
       if (Object.keys(state.availableComponents).length >= 2) {
         const systemReady = reduce(state.availableComponents, (ready, val) => ready && val, true);
         if (systemReady) {

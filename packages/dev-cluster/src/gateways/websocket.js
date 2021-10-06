@@ -87,66 +87,79 @@ module.exports = function (cluster, config) {
       socket.on("view", function (msg, reply) {
         console.log("executing view", msg.name);
         // execute the view and return the channel id to sync results
-        cluster.execute({ action: "view", name: camelCase(msg.name), params: msg.params }).subscribe(viewResult => {
-          if (reply) {
-            reply(viewResult.id);
+        cluster.execute({ action: "view", name: camelCase(msg.name), params: msg.params }).subscribe({
+          next(viewResult) {
+            if (reply) {
+              reply(viewResult.id);
+            }
+
+            socket.once(`channel:${viewResult.id}:close`, function () {
+              console.log("closing view channel", viewResult.id);
+              if (subscription) {
+                subscription.unsubscribe();
+              }
+            });
+
+            const subscription = viewResult.result.subscribe({
+              next(result) {
+                console.log("emiting new query result", `channel:${viewResult.id}`, result);
+                socket.emit(`channel:${viewResult.id}`, { type: "sync", result });
+              },
+              error(err) {
+                console.error("received an error", err);
+                socket.emit(`channel:${viewResult.id}`, { type: "error", error: err });
+              },
+              complete() {
+                console.log("query complete");
+                socket.emit(`channel:${viewResult.id}`, { type: "close" });
+              }
+            });
+          },
+          error(err) {
+            console.error("unable to initiate view", err);
+            socket.emit(`error`, { type: "error", error: err });
           }
-
-          socket.once(`channel:${viewResult.id}:close`, function () {
-            console.log("closing view channel", viewResult.id);
-            if (subscription) {
-              subscription.unsubscribe();
-            }
-          });
-
-          const subscription = viewResult.result.subscribe({
-            next(result) {
-              console.log("emiting new query result", `channel:${viewResult.id}`, result);
-              socket.emit(`channel:${viewResult.id}`, { type: "sync", result });
-            },
-            error(err) {
-              console.error("received an error", err);
-              socket.emit(`channel:${viewResult.id}`, { type: "error", error: err });
-            },
-            complete() {
-              console.log("query complete");
-              socket.emit(`channel:${viewResult.id}`, { type: "close" });
-            }
-          });
         });
       });
 
       socket.on("query", function (msg, reply) {
         // execute the query and return the channel id to sync results
         //FIXME: Send error to the right device + user if we're not able to produce a valid queryResult;
-        cluster.execute({ action: "query", ...msg }).subscribe(queryResult => {
-          if (reply) {
-            reply(queryResult.id);
+        cluster.execute({ action: "query", ...msg }).subscribe({
+          next(queryResult) {
+            if (reply) {
+              reply(queryResult.id);
+            }
+
+            socket.once(`channel:${queryResult.id}:close`, function () {
+              console.log("received request to close view", queryResult.id);
+              if (subscription) {
+                subscription.unsubscribe();
+              } else {
+                console.log("unable to close view has it is not available");
+              }
+            });
+
+            const subscription = queryResult.result.subscribe({
+              next(result) {
+                console.log("syncing result to the client", `channel:${queryResult.id}`, result);
+                socket.emit(`channel:${queryResult.id}`, { type: "sync", result });
+              },
+              error(err) {
+                console.error("received an error", err);
+                socket.emit(`channel:${queryResult.id}`, { type: "error", error: err });
+              },
+              complete() {
+                console.log("query complete");
+                socket.emit(`channel:${queryResult.id}`, { type: "close" });
+              }
+            });
+          },
+          error(err) {
+            // happens when query cannot be performed for any reason
+            console.error("unable to initiate query", err);
+            socket.emit(`error`, { type: "error", error: err });
           }
-
-          socket.once(`channel:${queryResult.id}:close`, function () {
-            console.log("received request to close view", queryResult.id);
-            if (subscription) {
-              subscription.unsubscribe();
-            } else {
-              console.log("unable to close view has it is not available");
-            }
-          });
-
-          const subscription = queryResult.result.subscribe({
-            next(result) {
-              console.log("syncing result to the client", `channel:${queryResult.id}`, result);
-              socket.emit(`channel:${queryResult.id}`, { type: "sync", result });
-            },
-            error(err) {
-              console.error("received an error", err);
-              socket.emit(`channel:${queryResult.id}`, { type: "error", error: err });
-            },
-            complete() {
-              console.log("query complete");
-              socket.emit(`channel:${queryResult.id}`, { type: "close" });
-            }
-          });
         });
       });
     });

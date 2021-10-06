@@ -22,5 +22,10 @@
    SOFTWARE.
  */
 module.exports = function ({ type = "memory" } = {}) {
-  return require(`@liquidscale/${type}-store`)();
+  switch (type) {
+    case "memory":
+      return require("./memory-store")();
+    default:
+      throw new Error("unsupported store type:" + type);
+  }
 };

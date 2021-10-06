@@ -25,21 +25,21 @@
 const platformFactory = require("@liquidscale/platform");
 const clientFactory = require("../client");
 
-module.exports = function() {
-    return function getSandbox(version = "v1") {
-        const platform = platformFactory({ version, engine: spi });
-        const client = clientFactory({ framework: "react", engine: spi });
-        return {
-            version,
-            exports: {},
-            require(name) {
-                switch (name) {
-                    case "@liquidscale/platform":
-                        return platform;
-                    case "@liquidscale/client":
-                        return client;
-                }
-            }
-        };
-    }
-}
+module.exports = function (engine) {
+  return function getSandbox(version = "v1") {
+    const platform = platformFactory({ version, engine });
+    const client = clientFactory({ framework: "react", engine });
+    return {
+      version,
+      exports: {},
+      require(name) {
+        switch (name) {
+          case "@liquidscale/platform":
+            return platform;
+          case "@liquidscale/client":
+            return client;
+        }
+      }
+    };
+  };
+};

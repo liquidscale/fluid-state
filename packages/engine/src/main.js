@@ -25,8 +25,8 @@ const { filter } = require("rxjs/operators");
 const { camelCase } = require("change-case");
 const codeUnitFactory = require("./code-unit");
 const platformFactory = require("@liquidscale/platform");
-const uniqid = require('uniqid');
-const { matches } = require('lodash');
+const uniqid = require("uniqid");
+const { matches } = require("lodash");
 
 module.exports = function (cluster) {
   const registeredUnits = [];
@@ -35,72 +35,81 @@ module.exports = function (cluster) {
 
   async function findUnit(key, criteria) {
     return Promise.reduce(
-        filter(registeredUnits, matches(criteria)),
-        async (target, unit) => {
-          const exposedApi = await unit.content;
-          if (exposedApi[key]) {
-            return { scope: exposedApi.scope, fn: exposedApi[key] };
-          } else {
-            return target;
-          }
-        },
-        null
-    );
-  }
-
-  const spi = {
-    getId() {
-      return engineId;
-    },
-    getConfig() {
-      return cluster.getConfig();
-    },
-    normalizeKey: require('./spi/normalize-key')(),
-    action(type, handler) {
-      return cluster.actions.pipe(filter(action => action.action === type)).subscribe(action => handler(action));
-    },
-    createCodeUnit({ key, content }) {
-      const infos = spi.normalizeKey(key);
-      return codeUnitFactory(spi)({ ...infos, content });
-    },
-    getPlatform(version = "v1") {
-      return platformFactory({ version, engine: spi });
-    },
-    getSandbox: require('./spi/get-sandbox')(),
-    installUnit(unit) {
-      registeredUnits.push(unit);
-      cluster.emit({ type: "install-unit", unit });
-    },
-    updateUnit(unit) {
-      const existing = registeredUnits.findIndex(u => u.stereotype === unit.stereotype && u.key === unit.key);
-      if (existing) {
-        console.log("updating unit", unit);
-        registeredUnits.splice(existing, 1, unit);
-        cluster.emit({ type: "update-unit", unit });
-      }
-    },
-    removeUnit(unit) {
-      const existing = registeredUnits.findIndex(u => u.stereotype === unit.stereotype && u.key === unit.key);
-      if (existing) {
-        registeredUnits.splice(existing, 1);
-        cluster.emit({ type: "remove-unit", unit });
-      }
-    },
-    resolveFunction: require('./spi/resolve-function')({ findUnit, engine: spi }),
-    resolveView: require('./spi/resolve-view')({ findUnit, engine: spi }),
-    async resolveScope(key) {
-      key = camelCase(key);
-      return Promise.reduce(registeredUnits, (target, unit) => {
-        if (unit.stereotype === "scope" && key === unit.key) {
-          return unit.content;
+      registeredUnits.filter(matches(criteria)),
+      async (target, unit) => {
+        const exposedApi = await unit.content;
+        if (exposedApi[key]) {
+          return { scope: exposedApi.scope, fn: exposedApi[key] };
         } else {
           return target;
         }
-      });
-    },
-    async getRegistry(key) {
-      return cluster.getRegistry(key, engineId);
-    },
+      },
+      null
+    );
+  }
+
+  const spi = {};
+
+  spi.getId = function () {
+    return engineId;
+  };
+  spi.getConfig = function () {
+    return cluster.getConfig();
+  };
+  spi.normalizeKey = require("./spi/normalize-key")();
+  spi.action = function (type, handler) {
+    return cluster.actions
+      .pipe(filter((action) => action.action === type))
+      .subscribe((action) => handler(action));
+  };
+  spi.createCodeUnit = function ({ key, content }) {
+    const infos = spi.normalizeKey(key);
+    return codeUnitFactory(spi)({ ...infos, content });
+  };
+  spi.getPlatform = function (version = "v1") {
+    return platformFactory({ version, engine: spi });
+  };
+  spi.getSandbox = require("./spi/get-sandbox")(spi);
+  spi.installUnit = function (unit) {
+    registeredUnits.push(unit);
+    cluster.emit({ type: "install-unit", unit });
+  };
+  spi.updateUnit = function (unit) {
+    const existing = registeredUnits.findIndex(
+      (u) => u.stereotype === unit.stereotype && u.key === unit.key
+    );
+    if (existing) {
+      console.log("updating unit", unit);
+      registeredUnits.splice(existing, 1, unit);
+      cluster.emit({ type: "update-unit", unit });
+    }
+  };
+  spi.removeUnit = function (unit) {
+    const existing = registeredUnits.findIndex(
+      (u) => u.stereotype === unit.stereotype && u.key === unit.key
+    );
+    if (existing) {
+      registeredUnits.splice(existing, 1);
+      cluster.emit({ type: "remove-unit", unit });
+    }
+  };
+  spi.resolveFunction = require("./spi/resolve-function")({
+    findUnit,
+    engine: spi,
+  });
+  spi.resolveView = require("./spi/resolve-view")({ findUnit, engine: spi });
+  spi.resolveScope = async function (key) {
+    key = camelCase(key);
+    return Promise.reduce(registeredUnits, (target, unit) => {
+      if (unit.stereotype === "scope" && key === unit.key) {
+        return unit.content;
+      } else {
+        return target;
+      }
+    });
+  };
+  spi.getRegistry = function (key) {
+    return cluster.getRegistry(key, engineId);
   };
 
   // register all built-in actions
@@ -112,6 +121,6 @@ module.exports = function (cluster) {
   return {
     getId() {
       return engineId;
-    }
+    },
   };
 };

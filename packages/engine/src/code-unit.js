@@ -27,7 +27,7 @@ const Yaml = require("js-yaml");
 const scopeFactory = require("./scope");
 
 function functionFactory(id, impl, scope, engine) {
-  console.log("creating functions", id, impl, scope);
+  console.log("installing function", id);
   return {
     id,
     impl,
@@ -77,6 +77,10 @@ module.exports = function (engine) {
       case "ui":
         return async function (content) {
           // content of the JSX is pushed as-is to the frontend server
+          return content;
+        };
+      case "asset":
+        return async function (content) {
           return content;
         };
       case "doc":

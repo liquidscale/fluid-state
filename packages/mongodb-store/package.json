@@ -1,7 +1,0 @@
-{
-  "name": "@liquidscale/mongodb-store",
-  "version": "1.0.0",
-  "main": "src/main.js",
-  "license": "MIT",
-  "dependencies": {}
-}
