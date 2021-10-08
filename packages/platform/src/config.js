@@ -24,7 +24,7 @@
 module.exports = function (engine) {
   const handler = {
     get(target, key) {
-      return target.get(key);
+      return target.get(key) || {};
     }
   };
 

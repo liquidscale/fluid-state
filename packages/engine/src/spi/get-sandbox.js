@@ -32,6 +32,9 @@ module.exports = function (engine) {
     return {
       version,
       exports: {},
+      getExports() {
+        return this.exports.default || this.exports;
+      },
       require(name) {
         switch (name) {
           case "@liquidscale/platform":

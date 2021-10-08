@@ -21,13 +21,13 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE.
  */ module.exports = function (engine) {
-  engine.action("query", function ({ query, scope, $result }) {
+  engine.action("query", function ({ query, scope, locale, height, user, meta, $result }) {
     console.log("executing query", query, scope);
     async function performQuery($result) {
       try {
-        const scopeRef = await engine.resolveScope(scope.key);
+        const { unit: scopeRef, key } = await engine.resolveScope(scope.key);
         if (scopeRef) {
-          const targetScope = await scopeRef.build({ data: { id: scope.id } });
+          const targetScope = await scopeRef({ key, height, locale, user, meta, data: { id: scope.id } });
           if (targetScope) {
             const queryResult = targetScope.query(query);
             $result.next(queryResult);

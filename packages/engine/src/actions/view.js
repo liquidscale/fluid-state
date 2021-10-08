@@ -22,15 +22,16 @@
    SOFTWARE.
  */
 module.exports = function (engine) {
-  engine.action("view", function ({ name, params, $result }) {
-    console.log("rendering data view", name);
+  engine.action("view", function ({ name, params, height = 0, locale = "en", $result }) {
     async function renderView($result) {
       try {
-        const view = await engine.resolveView(name, params);
+        console.log("rendering data view", name);
+        const view = await engine.resolveView(name);
         if (view) {
           console.log("view render function found", view);
           try {
-            const viewResult = await view(params);
+            console.log("rendering view %s with params", name, params);
+            const viewResult = await view(params, { height, locale });
             $result.next(viewResult);
             $result.complete();
           } catch (err) {

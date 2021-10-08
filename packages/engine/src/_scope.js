@@ -1,17 +1,92 @@
-const { merge } = require("lodash");
-const JsonQ = require("json-q");
-const mm = require("micromongo");
-const uniqid = require("uniqid");
+/**
+   MIT License
+
+   Copyright (c) 2021 Joel Grenon
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+ */
 const { BehaviorSubject } = require("rxjs");
 const { filter, map } = require("rxjs/operators");
+const { isUndefined, pick, omit, identity, intersection, merge } = require("lodash");
 const { createHash } = require("crypto");
-const { isUndefined } = require("lodash");
+const mm = require("micromongo");
+const JsonQ = require("json-q");
+const uniqid = require("uniqid");
 
-module.exports = function (engine) {
-  return async function scopeFactory({ instanceKey, data, meta, user = {}, locale = "en", height = 0 } = {}, spec) {
-    const store = spec.store || require("./memory-store")();
+module.exports = function scopeFactory(impl, engine) {
+  console.log("creating scope", impl);
 
-    const scope = {
+  const scopeRegistry = engine.getRegistry("lqs/scopes");
+
+  async function scope(key, spec, context, { store }) {
+    console.log("activating scope %s at height %s", key, context.height);
+
+    // Check if we already have this scope in our active list
+    const activeScope = await scopeRegistry.get(key);
+    if (activeScope) {
+      return activeScope;
+    }
+
+    console.log("create scope instance", key, spec);
+
+    const uuid = uniqid("scp-");
+    const reducers = spec.reducers || [];
+
+    // default to a simple memory store
+    store = store || require("./store")();
+
+    // Apply any available initial value to our scope state (if not already initialized)
+    await store.initState(spec.initialValue, context);
+
+    if (spec.upstream) {
+      console.log("connecting to our upstream parent config source");
+      // we will receive state updates from our parent scope (analog to config, inline join fields)
+      //FIXME: this subscription should be unsubscribed if scope is closed
+      spec.upstream.subscribe(subscriptionState => {
+        console.log("receive upstream state changes", subscriptionState);
+        if (subscriptionState) {
+          // apply updated join state from our parent. This will trigger all effects, hooks and queries
+          store.mutate(function (draft) {
+            if (!draft) {
+              return { init: subscriptionState };
+            } else {
+              merge(draft, subscriptionState);
+            }
+          });
+        }
+      });
+    }
+
+    function triggerReducers(context, nextState) {
+      console.log("looking for registered reducers on this scope able to process the incoming context", context);
+      const platform = engine.getPlatform();
+      return store.mutate(function (draft) {
+        // mutate our store with the result of all reducers. no new frame will be produced if nothing is changed
+        reducers.map(reducer => reducer(context, draft, nextState, platform));
+      });
+    }
+
+    const scopeInstance = {
+      id: key,
+      spi: {},
+      selector: context.selector,
+      children: engine.getRegistry(uuid),
       getState(selector, query) {
         let result = store.getState();
         if (selector) {
@@ -23,19 +98,19 @@ module.exports = function (engine) {
         return Object.freeze(result);
       },
       getMutator(factory, platform) {
-        console.log("get mutator for scope", instanceKey);
+        console.log("get mutator for scope", uuid);
         return store.buildMutator(factory, platform);
       },
       mutate(mutator, ctx) {
-        console.log("mutate scope", instanceKey);
+        console.log("mutate scope", uuid);
         return store.mutate(mutator, ctx);
       },
-      query({ selector, query, projection, sort, limit, skip } = {}) {
-        console.log("query scope", instanceKey, selector, query);
+      query({ selector, query, height = 0, locale = "en", projection, sort, limit, skip } = {}) {
+        console.log("query scope", uuid, selector, query, context);
 
         const q = {
           id: uniqid(),
-          height,
+          height: height || context.height || 0,
           state: new BehaviorSubject(),
           hash: null
         };
@@ -44,8 +119,8 @@ module.exports = function (engine) {
         const queryResult = store
           .loadState({
             height: q.height,
-            locale,
-            selector: selector || spec.selector
+            locale: locale || context.locale,
+            selector: selector || context.selector
           })
           .pipe(
             filter(result => {
@@ -111,10 +186,10 @@ module.exports = function (engine) {
       },
       async spawn(scopeKey, refSelector, childId, childSpec, { height, data } = {}) {
         console.log("spawn child scope", scopeKey, refSelector, childId);
-        const childScopeKey = createHash("md5").update(`${instanceKey}_${childId}`).digest("hex");
+        const childScopeKey = createHash("md5").update(`${scopeKey}_${refSelector}_${childId}`).digest("hex");
 
         // quick reuse of existing child scope
-        const existingChildScopeRef = await state.children.get(childScopeKey);
+        const existingChildScopeRef = await this.children.get(childScopeKey);
         if (existingChildScopeRef) {
           console.log("reusing existing child scope", childScopeKey);
           return existingChildScopeRef.scope;
@@ -164,43 +239,23 @@ module.exports = function (engine) {
           );
         });
 
-        await state.children.register(childScopeKey, scopeRef);
+        await this.children.register(childScopeKey, scopeRef);
 
         return childScope;
       }
     };
 
-    // Apply any available initial value to our scope state (if not already initialized)
-    await store.initState(spec.initialValue, { id: instanceKey, data, meta, user, locale, height });
+    // Keep track of our active scopes
+    await scopeRegistry.register(key, scopeInstance);
 
-    if (spec.upstream) {
-      console.log("connecting to our upstream parent config source");
-      // we will receive state updates from our parent scope (analog to config, inline join fields)
-      //FIXME: this subscription should be unsubscribed if scope is closed
-      state.upstreamSubscription = spec.upstream.subscribe(subscriptionState => {
-        console.log("receive upstream state changes", subscriptionState);
-        if (subscriptionState) {
-          // apply updated join state from our parent. This will trigger all effects, hooks and queries
-          store.mutate(function (draft) {
-            if (!draft) {
-              return { init: subscriptionState };
-            } else {
-              merge(draft, subscriptionState);
-            }
-          });
-        }
-      });
+    return scopeInstance;
+  }
+
+  return {
+    async build({ height = 0, data = {} } = {}, opts = {}) {
+      const instanceId = data[opts.idField || "id"];
+      console.log("rebuilding scope with instance id", instanceId, opts.idField || "id");
+      return scope(instanceId, impl(instanceId), { height, data, selector: opts.selector }, platform);
     }
-
-    function triggerReducers(context, nextState) {
-      console.log("looking for registered reducers on this scope able to process the incoming context", context);
-      const platform = engine.getPlatform();
-      return store.mutate(function (draft) {
-        // mutate our store with the result of all reducers. no new frame will be produced if nothing is changed
-        reducers.map(reducer => reducer(context, draft, nextState, platform));
-      });
-    }
-
-    return scope;
   };
 };

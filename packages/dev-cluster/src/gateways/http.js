@@ -41,7 +41,7 @@ module.exports = function (cluster, config) {
 
     // trigger an exposed function execution
     app.post("/fns/:fn", bodyParser.json(), function (req, res) {
-      const fnCall = cluster.execute({ action: "exec", fn: req.params.fn, data: req.body });
+      const fnCall = cluster.execute({ action: "exec", fn: req.params.fn, data: req.body, meta: { connId: null } });
 
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Content-Type", "text/event-stream");
@@ -49,7 +49,7 @@ module.exports = function (cluster, config) {
 
       const subscription = fnCall.subscribe({
         next(chunk) {
-          console.log("received a value", chunk);
+          console.log("received chunk", chunk);
           res.write(JSON.stringify(chunk));
         },
         error(err) {
@@ -57,36 +57,37 @@ module.exports = function (cluster, config) {
           res.status(err.code || 500).end(err.message);
         },
         complete() {
-          console.log("complete");
           res.end();
         }
-      });
-
-      req.on("close", function () {
-        //subscription.unsubscribe();
       });
     });
 
     app.post("/queries/:scope/:id?", bodyParser.json(), function (req, res) {
       console.log("executing query", req.params, req.body);
-      const queryExec = cluster.execute({ action: "query", scope: req.params.scope, id: req.params.id, query: req.body });
-      const subscription = queryExec.subscribe({
-        next(result) {
-          res.json(result);
-          subscription.unsubscribe();
+      cluster.execute({ action: "query", scope: { key: req.params.scope, id: req.params.id }, query: req.body }).subscribe({
+        next(queryResult) {
+          const subscription = queryResult.result.subscribe({
+            next(result) {
+              console.log("syncing result to the client", `channel:${queryResult.id}`, result);
+              res.json(result);
+              process.nextTick(function () {
+                subscription.unsubscribe();
+              });
+            },
+            error(err) {
+              console.error("received an error", err);
+              res.status(err.code || 500).end(err.message);
+            },
+            complete() {
+              res.end();
+            }
+          });
         },
         error(err) {
-          console.error("received an error", err);
-          res.status(err.code || 500).end(err.message);
-        },
-        complete() {
-          console.log("query complete");
-          res.end();
+          // happens when query cannot be performed for any reason
+          console.error("unable to initiate query", err);
+          res.status(err.code || 400).end(err.message);
         }
-      });
-
-      req.on("close", function () {
-        //subscription.unsubscribe();
       });
     });
 

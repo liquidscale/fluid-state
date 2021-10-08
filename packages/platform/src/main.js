@@ -34,10 +34,16 @@ module.exports = function ({ version = 1, engine } = {}) {
     },
     getConfig() {
       return engine.getConfig();
+    },
+    getRegistry(...args) {
+      return engine.getRegistry(...args);
+    },
+    createScope(...args) {
+      return engine.createScope(...args);
     }
   };
 
-  return {
+  const api = {
     version,
     idgen: () => uniqid(),
     console,
@@ -46,6 +52,15 @@ module.exports = function ({ version = 1, engine } = {}) {
     morph: require("./morph")(spi),
     mutate: require("./morph")(spi),
     view: require("./view")(spi),
-    config: require("./config")(spi)
+    config: require("./config")(spi),
+    timer: require("./timer")(spi)
   };
+
+  api.forContext = function ({ meta, locale, height, user }) {
+    return { meta, locale, height, user, ...api };
+  };
+
+  api.scopeInstance = require("./scope-instance")(spi);
+
+  return api;
 };

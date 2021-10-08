@@ -59,7 +59,6 @@ module.exports = function config(root, events) {
       filter(event => event.unit.stereotype === "data" && event.unit.key === "lqs")
     )
     .subscribe(event => {
-      console.log("detected data file change", event);
       async function updateConfig() {
         const data = await event.unit.content;
         console.log("merging new data", data);

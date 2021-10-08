@@ -22,54 +22,40 @@
    SOFTWARE.
  */
 const compiler = require("./compiler");
-const vm = require("vm");
 const Yaml = require("js-yaml");
-const scopeFactory = require("./scope");
-
-function functionFactory(id, impl, scope, engine) {
-  console.log("installing function", id);
-  return {
-    id,
-    impl,
-    scope
-  };
-}
+const functionBuilder = require("./function-builder");
+const scopeBuilder = require("./scope-builder");
 
 module.exports = function (engine) {
   function contentFactory(stereotype, type) {
     switch (stereotype) {
       case "scope":
+        return async function (content) {
+          try {
+            const sandbox = engine.getSandbox();
+            compiler.compileScript(await content, sandbox);
+            const exposedScopes = sandbox.getExports();
+            const targetPlatform = engine.getPlatform();
+            return Object.keys(sandbox.exports.default || sandbox.exports).reduce((api, name) => {
+              api[name] = scopeBuilder(exposedScopes[name], targetPlatform, engine);
+              return api;
+            }, {});
+          } catch (err) {
+            console.error("runtime error", err);
+          }
+        };
       case "config":
       case "fn":
         return async function (content) {
-          // compile using babel
-          const code = compiler.compileScript(await content);
-          const script = new vm.Script(code);
           try {
             const sandbox = engine.getSandbox();
-            const context = vm.createContext(sandbox);
-            script.runInContext(context);
-            let exposedApi = null;
-            if (sandbox.exports.default) {
-              exposedApi = sandbox.exports.default;
-            } else {
-              exposedApi = sandbox.exports;
-            }
-
-            if (stereotype === "scope") {
-              return scopeFactory(exposedApi, engine);
-            } else if (stereotype === "fn") {
-              return Object.keys(exposedApi).reduce((api, name) => {
-                if (name !== "scope") {
-                  api[name] = functionFactory(name, exposedApi[name], exposedApi.scope, engine);
-                }
-                return api;
-              }, {});
-            } else if (stereotype === "config") {
-              console.log("unsupported config component righ now");
-            } else {
-              console.log("unknown stereotype ", steteotype);
-            }
+            compiler.compileScript(await content, sandbox);
+            const exposedFunctions = sandbox.getExports();
+            const targetPlatform = engine.getPlatform();
+            return Object.keys(sandbox.getExports()).reduce((api, name) => {
+              api[name] = functionBuilder(exposedFunctions[name], targetPlatform, engine);
+              return api;
+            }, {});
           } catch (err) {
             console.error("runtime error", err);
           }

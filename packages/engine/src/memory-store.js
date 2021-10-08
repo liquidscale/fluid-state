@@ -39,7 +39,7 @@ module.exports = function () {
   let _height = 0;
 
   // Apply mutation changes to our state
-  changes.subscribe((frame) => {
+  changes.subscribe(frame => {
     if (frame.patches) {
       _state.next(applyPatches(_state.getValue(), frame.patches));
     } else {
@@ -75,18 +75,15 @@ module.exports = function () {
       const frame = {
         height: ++_height,
         patches: [],
-        inverses: [],
+        inverses: []
       };
 
-      const [nextState, patches, inverses] = produceWithPatches(
-        state,
-        (draft) => {
-          const result = mutator(draft, context);
-          if (result && result.init) {
-            return result.init;
-          }
+      const [nextState, patches, inverses] = produceWithPatches(state, draft => {
+        const result = mutator(draft, context);
+        if (result && result.init) {
+          return result.init;
         }
-      );
+      });
 
       frame.patches = patches;
       frame.inverses = inverses;
@@ -99,27 +96,26 @@ module.exports = function () {
         changes.next(frame);
       }
 
+      console.log("produced next state", nextState);
+
       return nextState;
     },
-    buildMutator(factory, platform) {
+    buildMutator(fn) {
       return function (data, context) {
         const state = _state.getValue();
 
         const frame = {
           height: ++_height,
           patches: [],
-          inverses: [],
+          inverses: []
         };
 
-        const [nextState, patches, inverses] = produceWithPatches(
-          state,
-          (draft) => {
-            const result = factory(draft, platform)(data, context);
-            if (result && result.init) {
-              return result.init;
-            }
+        const [nextState, patches, inverses] = produceWithPatches(state, draft => {
+          const result = fn(draft, data, context);
+          if (result && result.init) {
+            return result.init;
           }
-        );
+        });
 
         frame.patches = patches;
         frame.inverses = inverses;
@@ -131,6 +127,8 @@ module.exports = function () {
           frames.next(frame);
           changes.next(frame);
         }
+
+        console.log("produced next state", nextState);
       };
     },
     loadState({ height = 0, selector } = {}) {
@@ -138,7 +136,7 @@ module.exports = function () {
       if (height === 0) {
         return _state
           .pipe(
-            map((state) => {
+            map(state => {
               if (selector) {
                 state = JsonQ.get(state, selector);
               }
@@ -150,6 +148,6 @@ module.exports = function () {
       } else {
         console.warn("past or future queries not supported yet!");
       }
-    },
+    }
   };
 };
