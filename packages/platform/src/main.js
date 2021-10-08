@@ -40,7 +40,8 @@ module.exports = function ({ version = 1, engine } = {}) {
     },
     createScope(...args) {
       return engine.createScope(...args);
-    }
+    },
+    query: require("./query")(engine)
   };
 
   const api = {

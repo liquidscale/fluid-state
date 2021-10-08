@@ -91,27 +91,32 @@ module.exports = function (cluster, config) {
       });
     });
 
-    app.get("/channels/:id", function (req, res) {
-      const dataChannel = cluster.execute({ action: "open-channel", id });
-      const subscription = dataChannel.subscribe({
-        next(chunk) {
-          res.write(JSON.stringify(chunk));
+    app.get("/views/:name?", function (req, res) {
+      console.log("rendering data view", req.params, req.body);
+      cluster.execute({ action: "view", name: req.params.name, params: req.query }).subscribe({
+        next(viewResult) {
+          const subscription = viewResult.result.subscribe({
+            next(result) {
+              console.log("syncing result to the client", `channel:${viewResult.id}`, result);
+              res.json(result);
+              process.nextTick(function () {
+                subscription.unsubscribe();
+              });
+            },
+            error(err) {
+              console.error("received an error", err);
+              res.status(err.code || 500).end(err.message);
+            },
+            complete() {
+              res.end();
+            }
+          });
         },
         error(err) {
-          console.log("received an error", err);
-          next(err);
-        },
-        complete() {
-          res.end();
+          // happens when query cannot be performed for any reason
+          console.error("unable to initiate view", err);
+          res.status(err.code || 400).end(err.message);
         }
-      });
-
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Connection", "keep-alive");
-
-      req.on("close", function () {
-        // subscription.unsubscribe();
       });
     });
 

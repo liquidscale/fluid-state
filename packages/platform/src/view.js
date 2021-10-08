@@ -31,8 +31,8 @@ module.exports = function (platform) {
         return this;
       },
       render() {
-        console.log("rendering view", scope, _state.config);
-        return scope.query(_state.config);
+        console.log("rendering view", platform, scope, _state.config);
+        return platform.query(scope, _state.config);
       }
     };
   };
