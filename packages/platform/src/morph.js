@@ -22,7 +22,7 @@
    SOFTWARE.
  */
 const fos = require("filter-objects");
-const { merge, remove, matches } = require("lodash");
+const { merge, remove, matches, find } = require("lodash");
 
 module.exports = function (engine) {
   return function (target) {
@@ -35,9 +35,28 @@ module.exports = function (engine) {
           target.push(merge(selector, changes.$set || changes));
         }
       },
+      update(selector, changes) {
+        const exists = fos.filter(selector, target);
+        if (exists.length > 0) {
+          merge(exists[0], changes.$set || changes);
+        } else {
+          throw new Error("cannot-update-undefined");
+        }
+      },
       delete(selector) {
         console.log("deleting", selector);
         remove(target, matches(selector));
+      },
+      updateMany(selector, updater) {
+        return fos.filter(selector, target).map(updater);
+      },
+      updateOne(selector, updater) {
+        const obj = find(target, matches(selector));
+        if (obj) {
+          return updater(obj);
+        } else {
+          throw new Error("cannot-update-undefined");
+        }
       }
     };
   };
