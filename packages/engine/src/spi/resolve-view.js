@@ -21,20 +21,16 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
  */
-const { camelCase } = require("change-case");
+
 module.exports = function ({ findUnit, engine }) {
-  return async function resolveView(name, data, opts = { height: 0 }) {
-    name = camelCase(name);
-    const targetFn = await findUnit(name, { stereotype: "fn" });
+  return async function resolveView(name) {
+    name = engine.formatKey(name);
+    const { key, version, unit: targetFn } = await findUnit(name, { stereotype: "fn" });
     if (targetFn) {
-      const platform = require("@liquidscale/platform")({ engine });
-      return async function () {
+      return async function (data, { meta, locale, user, height = 0 } = {}) {
         try {
-          if (targetFn.fn.scope) {
-            const scope = await targetFn.fn.scope.build(data, { height: opts.height });
-            const renderer = targetFn.fn.impl(scope, platform);
-            return renderer(data, { user: { /* FIXME */ anonymous: true } });
-          }
+          console.log("rendering view", name, data);
+          return targetFn(data, { key, version, meta, locale, height, user, immutable: true });
         } catch (err) {
           console.error("engine:resolveView:", err);
           throw err;

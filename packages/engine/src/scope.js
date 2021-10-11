@@ -1,93 +1,20 @@
-/**
-   MIT License
-
-   Copyright (c) 2021 Joel Grenon
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE.
- */
-const { camelCase } = require("change-case");
+const { merge } = require("lodash");
+const JsonQ = require("json-q");
+const mm = require("micromongo");
+const uniqid = require("uniqid");
 const { BehaviorSubject } = require("rxjs");
 const { filter, map } = require("rxjs/operators");
-const { isUndefined, pick, omit, identity, intersection, merge } = require("lodash");
 const { createHash } = require("crypto");
-const mm = require("micromongo");
-const JsonQ = require("json-q");
-const uniqid = require("uniqid");
+const { isUndefined } = require("lodash");
 
-module.exports = function scopeFactory(impl, engine) {
-  const id = camelCase(Object.keys(impl).filter(k => k !== "parent")[0]);
+module.exports = function (engine) {
+  return async function scopeFactory({ instanceKey, data, meta, user = {}, locale = "en", height = 0 } = {}, spec) {
+    const store = spec.store || require("./memory-store")();
+    const _state = {};
 
-  const scopeRegistry = engine.getRegistry("lqs/scopes");
+    spec.reducers = spec.reducers || [];
 
-  async function scope(key, spec, context, { store }) {
-    console.log("activating scope %s at height %s", key, context.height);
-
-    // Check if we already have this scope in our active list
-    const activeScope = await scopeRegistry.get(key);
-    if (activeScope) {
-      return activeScope;
-    }
-
-    console.log("create scope instance", key, spec);
-
-    const uuid = uniqid("scp-");
-    const reducers = spec.reducers || [];
-
-    // default to a simple memory store
-    store = store || require("./store")();
-
-    // Apply any available initial value to our scope state (if not already initialized)
-    await store.initState(spec.initialValue, context);
-
-    if (spec.upstream) {
-      console.log("connecting to our upstream parent config source");
-      // we will receive state updates from our parent scope (analog to config, inline join fields)
-      //FIXME: this subscription should be unsubscribed if scope is closed
-      spec.upstream.subscribe(subscriptionState => {
-        console.log("receive upstream state changes", subscriptionState);
-        if (subscriptionState) {
-          // apply updated join state from our parent. This will trigger all effects, hooks and queries
-          store.mutate(function (draft) {
-            if (!draft) {
-              return { init: subscriptionState };
-            } else {
-              merge(draft, subscriptionState);
-            }
-          });
-        }
-      });
-    }
-
-    function triggerReducers(context, nextState) {
-      console.log("looking for registered reducers on this scope able to process the incoming context", context);
-      const platform = engine.getPlatform();
-      return store.mutate(function (draft) {
-        // mutate our store with the result of all reducers. no new frame will be produced if nothing is changed
-        reducers.map(reducer => reducer(context, draft, nextState, platform));
-      });
-    }
-
-    const scopeInstance = {
-      id: key,
-      spi: {},
-      selector: context.selector,
-      children: engine.getRegistry(uuid),
+    const scope = {
       getState(selector, query) {
         let result = store.getState();
         if (selector) {
@@ -99,19 +26,19 @@ module.exports = function scopeFactory(impl, engine) {
         return Object.freeze(result);
       },
       getMutator(factory, platform) {
-        console.log("get mutator for scope", uuid);
+        console.log("get mutator for scope", instanceKey);
         return store.buildMutator(factory, platform);
       },
       mutate(mutator, ctx) {
-        console.log("mutate scope", uuid);
+        console.log("mutate scope", instanceKey);
         return store.mutate(mutator, ctx);
       },
-      query({ selector, query, height = 0, locale = "en", projection, sort, limit, skip } = {}) {
-        console.log("query scope", uuid, selector, query, context);
+      query({ selector, query, projection, sort, limit, skip } = {}) {
+        console.log("query scope", instanceKey, selector, query);
 
         const q = {
           id: uniqid(),
-          height: height || context.height || 0,
+          height,
           state: new BehaviorSubject(),
           hash: null
         };
@@ -120,8 +47,8 @@ module.exports = function scopeFactory(impl, engine) {
         const queryResult = store
           .loadState({
             height: q.height,
-            locale: locale || context.locale,
-            selector: selector || context.selector
+            locale,
+            selector: selector || spec.selector
           })
           .pipe(
             filter(result => {
@@ -185,90 +112,38 @@ module.exports = function scopeFactory(impl, engine) {
           }
         };
       },
-      async spawn(scopeKey, refSelector, childId, childSpec, { height, data } = {}) {
-        console.log("spawn child scope", scopeKey, refSelector, childId);
-        const childScopeKey = createHash("md5").update(`${scopeKey}_${refSelector}_${childId}`).digest("hex");
-
-        // quick reuse of existing child scope
-        const existingChildScopeRef = await this.children.get(childScopeKey);
-        if (existingChildScopeRef) {
-          console.log("reusing existing child scope", childScopeKey);
-          return existingChildScopeRef.scope;
-        }
-
-        // Create our child join state observable to produce initialvalue and refresh the child scope if things changes in the parent collection
-        const upstreamValue = new BehaviorSubject();
-        childSpec.upstream = upstreamValue.pipe(
-          filter(state => {
-            if (Array.isArray(state)) {
-              return state.length > 0;
-            } else {
-              return true;
-            }
-          }),
-          map(state => {
-            if (Array.isArray(state)) {
-              return state[0];
-            } else {
-              return state;
-            }
-          })
-        );
-
-        // Connect our child state to constantly update our child scope if the join inline data changes
-        this.query({ selector: refSelector, query: { id: childId } }).result.subscribe(upstreamValue);
-
-        const childScope = await scope(childScopeKey, childSpec, { height, parent: this.spi, data }, engine.getPlatform());
-
-        const scopeRef = {
-          key: childScopeKey,
-          scope: childScope
-        };
-
-        // subscribe to childscope state to update our join if required (update logic override?)
-        scopeRef.childSubscription = childScope.query().result.subscribe(childState => {
-          // FIXME: Make sure we don't get an infinite loop with child - parent - child -parent state updates in parent scope collection
-          triggerReducers(
-            {
-              type: "sync-child-state",
-              key: scopeKey,
-              id: childId,
-              selector: refSelector,
-              childScope
-            },
-            childState
-          );
+      triggerReducers(context, nextState) {
+        console.log("looking for registered reducers on this scope able to process the incoming context", context);
+        const platform = engine.getPlatform();
+        return store.mutate(function (draft) {
+          // mutate our store with the result of all reducers. no new frame will be produced if nothing is changed
+          spec.reducers.map(reducer => reducer(context, draft, nextState, platform));
         });
-
-        await this.children.register(childScopeKey, scopeRef);
-
-        return childScope;
       }
     };
 
-    // Keep track of our active scopes
-    await scopeRegistry.register(key, scopeInstance);
+    // Apply any available initial value to our scope state (if not already initialized)
+    await store.initState(spec.initialValue, { id: instanceKey, data, meta, user, locale, height });
 
-    return scopeInstance;
-  }
-
-  return {
-    id,
-    async build({ height = 0, data = {} } = {}, opts = {}) {
-      console.log("build scope %s at height %d", id, height, opts, data, impl);
-      const platform = engine.getPlatform();
-      const instanceId = data[opts.idField || "id"];
-      console.log("rebuilding scope with instance id", instanceId, opts.idField || "id");
-      const spec = impl[id](platform)(instanceId);
-      if (impl.parent) {
-        const parent = await impl.parent.build(data, { height }, opts);
-        return parent.spawn(id, parent.selector, instanceId, spec, {
-          height,
-          data
-        });
-      } else {
-        return scope(id, spec, { height, data, selector: opts.selector }, platform);
-      }
+    if (spec.upstream) {
+      console.log("connecting to our upstream parent config source");
+      // we will receive state updates from our parent scope (analog to config, inline join fields)
+      //FIXME: this subscription should be unsubscribed if scope is closed
+      _state.upstreamSubscription = spec.upstream.subscribe(subscriptionState => {
+        console.log("**** receive upstream state changes", subscriptionState);
+        if (subscriptionState) {
+          // apply updated join state from our parent. This will trigger all effects, hooks and queries
+          store.mutate(function (draft) {
+            if (!draft) {
+              return { init: subscriptionState };
+            } else {
+              merge(draft, subscriptionState);
+            }
+          });
+        }
+      });
     }
+
+    return scope;
   };
 };

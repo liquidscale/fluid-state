@@ -23,14 +23,14 @@
  */
 module.exports = function (engine) {
   engine.action("exec", function ({ fn, data, meta, $result }) {
-    console.log("resolving function", fn);
+    console.log("resolving function", { fn, data, meta });
     async function resolve($result) {
       try {
-        const func = await engine.resolveFunction(fn, data, { meta });
+        const { key, version, unit: func } = await engine.resolveFunction(fn);
         if (func) {
-          console.log("executing function", fn);
           try {
-            const result = await func();
+            console.log("executing function", fn, data, meta);
+            const result = await func(data, { key, version, meta });
             if (result) {
               console.log("producing fn %s result", fn, result);
               $result.next(result);

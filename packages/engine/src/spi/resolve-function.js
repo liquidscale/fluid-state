@@ -21,28 +21,9 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
  */
-const { camelCase } = require("change-case");
 
 module.exports = function ({ findUnit, engine }) {
-  return async function resolveFunction(key, data, opts = { height: 0 }) {
-    key = camelCase(key);
-    const targetFn = await findUnit(key, { stereotype: "fn" });
-    if (targetFn) {
-      return async function () {
-        try {
-          const platform = require("@liquidscale/platform")({ engine });
-          if (targetFn.fn.scope) {
-            const scope = await targetFn.fn.scope.build(data, { height: opts.height });
-            const mutator = scope.getMutator(targetFn.fn.impl, platform);
-            return mutator(data, { meta: opts.meta, user: { anonymous: true } /* FIXME */ });
-          } else {
-            return targetFn.fn.impl(data, { meta: opts.meta, user: { anonymous: true } /* FIXME */ }, platform);
-          }
-        } catch (err) {
-          console.error("engine:resolveFunction:", err);
-          throw err;
-        }
-      };
-    }
+  return async function resolveFunction(key) {
+    return findUnit(engine.formatKey(key), { stereotype: "fn" });
   };
 };

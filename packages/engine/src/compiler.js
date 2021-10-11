@@ -23,12 +23,16 @@
  */
 const babel = require("@babel/core");
 const babelPresetEnv = require("@babel/preset-env");
+const { Script, createContext } = require("vm");
 
 module.exports = {
-  compileScript(script) {
-    return babel.transform(script, {
+  compileScript(unitCode, sandbox) {
+    const code = babel.transform(unitCode, {
       presets: [[babelPresetEnv, { modules: "auto", targets: { node: "current" } }]]
     }).code;
+    const script = new Script(code);
+    const context = createContext(sandbox);
+    return script.runInContext(context);
   },
   compileMarkdown(markdown) {
     return markdown;
