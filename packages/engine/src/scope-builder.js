@@ -18,8 +18,9 @@ module.exports = function (factory, platform, engine) {
     console.log("executing targetfn to retrieve the scope spec", key, instanceId);
 
     if (state.parent) {
-      const parentScopeInstance = await state.scope.buildForContext({ data, meta, locale, height, user });
-      return parentScopeInstance.spawn(targetFn, instanceId, spec);
+      const parentScopeInstance = await state.parent.buildForContext({ data, meta, locale, height, user });
+      const childSpec = await targetFn(instanceId);
+      return parentScopeInstance.spawn(key, instanceId, childSpec, spec.selector, { height, locale, user, meta, data });
     } else {
       const spec = await targetFn(instanceId);
       return platform.scopeInstance(key, instanceId, spec, { data, meta, height, locale, user });

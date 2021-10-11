@@ -9,7 +9,13 @@ module.exports = function (factory, platform, engine) {
    */
   const fnContext = {
     scope(...args) {
-      state.scope = scopeRef(...args);
+      if (typeof args[0] === "string") {
+        console.log("creating a new ref", args);
+        state.scope = scopeRef(...args);
+      } else {
+        console.log("reusing ref", args[0]);
+        state.scope = args[0];
+      }
       return this;
     },
     trigger() {
@@ -32,7 +38,6 @@ module.exports = function (factory, platform, engine) {
       if (state.scope) {
         const scopeInstance = await state.scope.buildForContext({ data, meta, locale, height, user });
         if (scopeInstance) {
-          console.log("immutable? ", immutable, state.immutable);
           return scopeInstance.immutable(immutable || state.immutable).invoke(targetFn, data, platform.forContext({ meta, locale, user }));
         } else {
           throw new Error("invalid scope ref", state.scope);

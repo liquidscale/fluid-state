@@ -10,6 +10,9 @@ const { isUndefined } = require("lodash");
 module.exports = function (engine) {
   return async function scopeFactory({ instanceKey, data, meta, user = {}, locale = "en", height = 0 } = {}, spec) {
     const store = spec.store || require("./memory-store")();
+    const _state = {};
+
+    spec.reducers = spec.reducers || [];
 
     const scope = {
       getState(selector, query) {
@@ -109,64 +112,13 @@ module.exports = function (engine) {
           }
         };
       },
-      async spawn(scopeKey, refSelector, childId, childSpec, { height, data } = {}) {
-        console.log("spawn child scope", scopeKey, refSelector, childId);
-        const childScopeKey = createHash("md5").update(`${instanceKey}_${childId}`).digest("hex");
-
-        // quick reuse of existing child scope
-        const existingChildScopeRef = await state.children.get(childScopeKey);
-        if (existingChildScopeRef) {
-          console.log("reusing existing child scope", childScopeKey);
-          return existingChildScopeRef.scope;
-        }
-
-        // Create our child join state observable to produce initialvalue and refresh the child scope if things changes in the parent collection
-        const upstreamValue = new BehaviorSubject();
-        childSpec.upstream = upstreamValue.pipe(
-          filter(state => {
-            if (Array.isArray(state)) {
-              return state.length > 0;
-            } else {
-              return true;
-            }
-          }),
-          map(state => {
-            if (Array.isArray(state)) {
-              return state[0];
-            } else {
-              return state;
-            }
-          })
-        );
-
-        // Connect our child state to constantly update our child scope if the join inline data changes
-        this.query({ selector: refSelector, query: { id: childId } }).result.subscribe(upstreamValue);
-
-        const childScope = await scope(childScopeKey, childSpec, { height, parent: this.spi, data }, engine.getPlatform());
-
-        const scopeRef = {
-          key: childScopeKey,
-          scope: childScope
-        };
-
-        // subscribe to childscope state to update our join if required (update logic override?)
-        scopeRef.childSubscription = childScope.query().result.subscribe(childState => {
-          // FIXME: Make sure we don't get an infinite loop with child - parent - child -parent state updates in parent scope collection
-          triggerReducers(
-            {
-              type: "sync-child-state",
-              key: scopeKey,
-              id: childId,
-              selector: refSelector,
-              childScope
-            },
-            childState
-          );
+      triggerReducers(context, nextState) {
+        console.log("looking for registered reducers on this scope able to process the incoming context", context);
+        const platform = engine.getPlatform();
+        return store.mutate(function (draft) {
+          // mutate our store with the result of all reducers. no new frame will be produced if nothing is changed
+          spec.reducers.map(reducer => reducer(context, draft, nextState, platform));
         });
-
-        await state.children.register(childScopeKey, scopeRef);
-
-        return childScope;
       }
     };
 
@@ -177,8 +129,8 @@ module.exports = function (engine) {
       console.log("connecting to our upstream parent config source");
       // we will receive state updates from our parent scope (analog to config, inline join fields)
       //FIXME: this subscription should be unsubscribed if scope is closed
-      state.upstreamSubscription = spec.upstream.subscribe(subscriptionState => {
-        console.log("receive upstream state changes", subscriptionState);
+      _state.upstreamSubscription = spec.upstream.subscribe(subscriptionState => {
+        console.log("**** receive upstream state changes", subscriptionState);
         if (subscriptionState) {
           // apply updated join state from our parent. This will trigger all effects, hooks and queries
           store.mutate(function (draft) {
@@ -189,15 +141,6 @@ module.exports = function (engine) {
             }
           });
         }
-      });
-    }
-
-    function triggerReducers(context, nextState) {
-      console.log("looking for registered reducers on this scope able to process the incoming context", context);
-      const platform = engine.getPlatform();
-      return store.mutate(function (draft) {
-        // mutate our store with the result of all reducers. no new frame will be produced if nothing is changed
-        reducers.map(reducer => reducer(context, draft, nextState, platform));
       });
     }
 

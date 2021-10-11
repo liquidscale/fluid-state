@@ -66,7 +66,6 @@ module.exports = function () {
       }
     },
     getState() {
-      console.log("retrieving state", storeId, _state.getValue());
       return _state.getValue();
     },
     mutate(mutator, context = {}) {
@@ -96,8 +95,6 @@ module.exports = function () {
         changes.next(frame);
       }
 
-      console.log("produced next state", nextState);
-
       return nextState;
     },
     buildMutator(fn) {
@@ -110,6 +107,7 @@ module.exports = function () {
           inverses: []
         };
 
+        console.log("mutating state", state);
         const [nextState, patches, inverses] = produceWithPatches(state, draft => {
           const result = fn(draft, data, context);
           if (result && result.init) {
